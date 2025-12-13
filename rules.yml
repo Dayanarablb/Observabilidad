@@ -1,0 +1,98 @@
+groups:
+  # ==================== ALERTAS DEL HOST ====================
+  - name: HostAlerts
+    rules:
+      - alert: HostDown
+        expr: up{job="node_exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Host {{ $labels.instance }} está caído"
+          description: "El Node Exporter en {{ $labels.instance }} ha estado inactivo por más de 1 minuto."
+
+      - alert: HighCPULoad
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alta carga de CPU en {{ $labels.instance }}"
+          description: "La carga de CPU en {{ $labels.instance }} ha superado el 80% en los últimos 5 minutos."
+
+      - alert: LowDiskSpace
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Poco espacio en disco en {{ $labels.instance }}"
+          description: "El espacio libre en el disco raíz (/) es menor al 10%."
+
+  # ==================== ALERTAS DE LA API ====================
+  - name: APIAlerts
+    rules:
+      # 1. Servicio Caído
+      - alert: ServiceDown
+        expr: up{job="inventory_api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: inventory
+        annotations:
+          summary: "API de Inventario está caída"
+          description: "El servicio de inventario no responde desde hace más de 2 minutos."
+          action: "1. Verificar logs del contenedor\n2. Revisar conectividad de red\n3. Reiniciar servicio si es necesario"
+
+      # 2. Latencia Alta Sostenida
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="inventory_api"}[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: inventory
+        annotations:
+          summary: "Latencia alta en API de Inventario"
+          description: "El P95 de latencia supera los 500ms sostenidamente durante 5 minutos."
+          action: "1. Revisar slow queries en base de datos\n2. Verificar carga de CPU/RAM\n3. Considerar escalado horizontal"
+
+      # 3. Tasa de Errores Crítica (5xx)
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job="inventory_api",status=~"5.."}[5m])) 
+            / 
+            sum(rate(http_requests_total{job="inventory_api"}[5m]))
+          ) * 100 > 5
+        for: 5m
+        labels:
+          severity: critical
+          service: inventory
+        annotations:
+          summary: "Tasa de errores 5xx elevada en API"
+          description: "Más del 5% de las solicitudes están generando errores 5xx."
+          action: "1. Revisar logs de errores inmediatamente\n2. Rollback si el deploy fue reciente\n3. Activar protocolo de incidentes"
+
+      # 4. Requests por segundo anormales
+      - alert: HighRequestRate
+        expr: rate(http_requests_total{job="inventory_api"}[1m]) > 100
+        for: 3m
+        labels:
+          severity: warning
+          service: inventory
+        annotations:
+          summary: "Tráfico inusualmente alto en la API"
+          description: "La API está recibiendo más de 100 requests/seg, posible ataque DDoS o pico de tráfico."
+          action: "1. Verificar origen de requests\n2. Activar rate limiting\n3. Escalar si es tráfico legítimo"
+
+      # 5. Sin requests (servicio inactivo)
+      - alert: NoTraffic
+        expr: rate(http_requests_total{job="inventory_api"}[10m]) == 0
+        for: 10m
+        labels:
+          severity: info
+          service: inventory
+        annotations:
+          summary: "API sin tráfico"
+          description: "No se han recibido requests en los últimos 10 minutos."
+          action: "Verificar si es comportamiento esperado o hay problemas de conectividad."

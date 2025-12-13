@@ -1,0 +1,36 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'inventory-monitor'
+
+# ==================== ALERTMANAGER ====================
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+# ==================== REGLAS DE ALERTA ====================
+rule_files:
+  - 'rules.yml'
+
+# ==================== JOBS DE SCRAPING ====================
+scrape_configs:
+  # Monitoreo de Prometheus mismo
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Monitoreo del Node Exporter (host)
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets: ['node_exporter:9100']
+
+  #  MONITOREO DE LA API DE INVENTARIO 
+  - job_name: 'inventory_api'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['inventory-api:5000']
+        labels:
+          service: 'inventory'
+          environment: 'production'

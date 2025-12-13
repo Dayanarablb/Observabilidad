@@ -1,0 +1,83 @@
+
+
+services:
+  # ==================== API DE INVENTARIO ====================
+  inventory-api:
+    build: ./api
+    container_name: inventory_api
+    ports:
+      - "5000:5000"
+    networks:
+      - monitor_net
+    restart: unless-stopped
+
+  # ==================== PROMETHEUS ====================
+  prometheus:
+    image: prom/prometheus:v2.45.0 
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./rules.yml:/etc/prometheus/rules.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    ports:
+      - "9090:9090"
+    networks:
+      - monitor_net
+    restart: unless-stopped
+    depends_on:
+      - inventory-api
+
+  # ==================== NODE EXPORTER ====================
+  node_exporter:
+    image: prom/node-exporter:latest
+    container_name: node_exporter
+    command:
+      - "--path.rootfs=/host/root"
+    volumes:
+      - /:/host/root:ro,rslave
+    ports:
+      - "9100:9100"
+    networks:
+      - monitor_net
+    restart: unless-stopped
+
+  # ==================== GRAFANA ====================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - monitor_net
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
+
+  # ==================== ALERTMANAGER ====================
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/config.yml:ro
+    ports:
+      - "9093:9093"
+    networks:
+      - monitor_net
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/alertmanager/config.yml"
+      - "--storage.path=/alertmanager"
+
+networks:
+  monitor_net:
+    driver: bridge
+
+volumes:
+  grafana_data:
